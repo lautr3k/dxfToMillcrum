@@ -66,11 +66,6 @@ def minMaxPos(x, y):
     maxX = maxX if isBiggerThan(maxX, x) else x
     minY = minY if isBiggerThan(y, minY) else y
     maxY = maxY if isBiggerThan(maxY, y) else y
-    
-    #minX = min(minX, x)
-    #maxX = max(maxX, x)
-    #minY = min(minY, y)
-    #maxY = max(maxY, y)
 
 # -----------------------------------------------------------------------------
 
@@ -160,8 +155,6 @@ def process_polylines(lines):
             minMaxPos(linePoint[0], linePoint[1])
             pos += 1
 
-            print minX, linePoint[0]
-
         # append polyline object
         if len(points):
             polylines.append(Polyline(points, minP))
@@ -171,6 +164,11 @@ def process_polylines(lines):
         return polylines
 
     return None
+
+# -----------------------------------------------------------------------------
+
+def process_arcs(arcs):
+    print arcs
 
 # -----------------------------------------------------------------------------
 
@@ -195,10 +193,13 @@ def process(input, output):
     polylines.extend(drawing.entities.get_type("lwpolyline"))
     polylines = process_polylines(polylines)
 
-    #print polylines
     if polylines:
         for polyline in polylines:
             mcBuffer+= mcPolygon(polyline)
+
+    # process ARC
+    arcs = drawing.entities.get_type('arc')
+    arcs = process_arcs(arcs)
 
     # surface size
     width  = (maxX if maxX else 100) + 10

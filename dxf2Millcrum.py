@@ -52,16 +52,25 @@ maxX = None
 minY = None
 maxY = None
 
+def isBiggerThan(var1, var2):
+    return cmp(var1, var2) == 1
+
 def minMaxPos(x, y):
     global minX, maxX, minY, maxY
     minX = minX if minX else x
     maxX = maxX if maxX else x
     minY = minY if minY else y
     maxY = maxY if maxY else y
-    minX = min(minX, x)
-    maxX = max(maxX, x)
-    minY = min(minY, y)
-    maxY = max(maxY, y)
+    
+    minX = minX if isBiggerThan(x, minX) else x
+    maxX = maxX if isBiggerThan(maxX, x) else x
+    minY = minY if isBiggerThan(y, minY) else y
+    maxY = maxY if isBiggerThan(maxY, y) else y
+    
+    #minX = min(minX, x)
+    #maxX = max(maxX, x)
+    #minY = min(minY, y)
+    #maxY = max(maxY, y)
 
 # -----------------------------------------------------------------------------
 
@@ -80,14 +89,16 @@ def mcPolygon(polyline):
 class Polyline:
     uid = 1
     def __init__(self, points, startPos = 0):
-        self.name   = 'polyline'+str(self.uid)
+        self.name   = 'polyline'+str(Polyline.uid)
         self.points = []
         if startPos > 0:
             self.points.extend(points[startPos:len(points)])
             self.points.extend(points[0:startPos])
-        self.uid+= 1
+        else:
+            self.points = points
+        Polyline.uid+= 1
 
-def lines2polylines(lines):
+def process_lines(lines):
     polylines = []
     last_line = []
     points    = []
@@ -95,21 +106,21 @@ def lines2polylines(lines):
     minX = 0
     minP = 0
     pos  = 0
-
+    
     for line in lines:
         # discontinued line
         if len(last_line) and line.points[0] != last_line[1]:
             polylines.append(Polyline(points, minP))
             points = []
 
-        # append points to polyline
+        # append polyline point
         points.append([line.points[0][0], line.points[0][1]])
 
         # calculate min x for stating point
         # from millcrum comment :  drawn to it in a CCW direction
         if pos == 0:
             minX = line.points[0][0]
-        elif (minX > line.points[0][0]):
+        elif (isBiggerThan(minX, line.points[0][0])):
             minX = line.points[0][0]
             minP = pos
         minMaxPos(line.points[0][0], line.points[0][1])
@@ -121,6 +132,42 @@ def lines2polylines(lines):
     # add first or last polyline and return
     if len(points):
         polylines.append(Polyline(points, minP))
+        return polylines
+
+    return None
+
+def process_polylines(lines):
+    polylines = []
+    points    = []
+    
+    for line in lines:
+        points = []
+        
+        minX = 0
+        minP = 0
+        pos  = 0
+        
+        for linePoint in line.points:
+            # append polyline point
+            points.append([linePoint[0], linePoint[1]])
+
+            # calculate min x for stating point
+            if pos == 0:
+                minX = linePoint[0]
+            elif (isBiggerThan(minX, linePoint[0])):
+                minX = linePoint[0]
+                minP = pos
+            minMaxPos(linePoint[0], linePoint[1])
+            pos += 1
+
+            print minX, linePoint[0]
+
+        # append polyline object
+        if len(points):
+            polylines.append(Polyline(points, minP))
+    
+    # return
+    if len(polylines):
         return polylines
 
     return None
@@ -137,8 +184,18 @@ def process(input, output):
 
     # process LINE
     lines     = drawing.entities.get_type('line')
-    polylines = lines2polylines(lines)
+    polylines = process_lines(lines)
     
+    if polylines:
+        for polyline in polylines:
+            mcBuffer+= mcPolygon(polyline)
+
+    # process POLYLINE
+    polylines = drawing.entities.get_type("polyline")
+    polylines.extend(drawing.entities.get_type("lwpolyline"))
+    polylines = process_polylines(polylines)
+
+    #print polylines
     if polylines:
         for polyline in polylines:
             mcBuffer+= mcPolygon(polyline)

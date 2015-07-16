@@ -30,7 +30,7 @@
 #*                                                                         *
 #***************************************************************************
 
-import sys
+import sys, math
 sys.path.append('./lib')
 from dxfReader import readDXF
 
@@ -67,16 +67,20 @@ def minMaxPos(x, y):
     minY = minY if isBiggerThan(y, minY) else y
     maxY = maxY if isBiggerThan(maxY, y) else y
 
+
+def is_close(n1 ,n2, limit = 0.0000000001):
+    return abs(n1 - n2) < limit
+
 # -----------------------------------------------------------------------------
 
 def mcPolygon(polyline):
     buffer = '// '+polyline.name+'\n'
     buffer+= 'var '+polyline.name+' = {type: \'polygon\',name:\''+polyline.name+'\',points:['
     for point in polyline.points:
-        buffer+= '['+str(point[0])+','+str(point[1])+'],';
+        buffer+= '['+str(point[0])+','+str(point[1])+'],'
     buffer = buffer.rstrip(',')
-    buffer+= ']};'
-    buffer+= '\nmc.cut(\'centerOnPath\','+polyline.name+', 4, [0,0]);\n'
+    buffer+= ']};\n'
+    buffer+= 'mc.cut(\'centerOnPath\','+polyline.name+', 4, [0,0]);\n'
     return buffer
 
 # -----------------------------------------------------------------------------
@@ -141,18 +145,18 @@ def process_polylines(lines):
         minX = 0
         minP = 0
         pos  = 0
-        
-        for linePoint in line.points:
+
+        for point in line.points:
             # append polyline point
-            points.append([linePoint[0], linePoint[1]])
+            points.append([point[0], point[1], point[2]])
 
             # calculate min x for stating point
             if pos == 0:
-                minX = linePoint[0]
-            elif (isBiggerThan(minX, linePoint[0])):
-                minX = linePoint[0]
+                minX = point[0]
+            elif (isBiggerThan(minX, point[0])):
+                minX = point[0]
                 minP = pos
-            minMaxPos(linePoint[0], linePoint[1])
+            minMaxPos(point[0], point[1])
             pos += 1
 
         # append polyline object
@@ -165,10 +169,83 @@ def process_polylines(lines):
 
     return None
 
-# -----------------------------------------------------------------------------
+class Arc:
+    uid = 1
+    def __init__(self, arc, start, end):
+        self.name     = 'arc'+str(Arc.uid)
+        self.radius   = arc.radius
+        self.startDeg = arc.start_angle
+        self.endDeg   = arc.end_angle
+        self.startPos = start
+        self.endPos   = end
+        self.points   = []
+        Arc.uid+= 1
+
+        points = []
+        angles = abs(arc.end_angle - arc.start_angle)
+
+        minX = 0
+        minP = 0
+        pos  = 0
+
+        for angle in range(int(angles)+1):
+            a = arc.start_angle + angle
+            x = math.cos(math.radians(a))
+            y = math.sin(math.radians(a))
+            
+            # round to zero if is close enough
+            x = 0 if is_close(x, 0) else x
+            y = 0 if is_close(y, 0) else y
+
+            # real position
+            x = (x * arc.radius) + arc.loc[0]
+            y = (y * arc.radius) + arc.loc[1]
+
+            # calculate min x for stating point
+            if pos == 0:
+                minX = x
+            elif (isBiggerThan(minX, x)):
+                minX = x
+                minP = pos
+            minMaxPos(x, y)
+            pos += 1
+
+            # position
+            points.append([x, y])
+
+        # add last point
+        #points.append(end)
+
+        if minP > 0:
+            self.points.extend(points[minP:len(points)])
+            self.points.extend(points[0:minP])
+        else:
+            self.points = points
 
 def process_arcs(arcs):
-    print arcs
+    mcArcs = []
+    for arc in arcs:
+        x1 = math.cos(math.radians(arc.start_angle))
+        y1 = math.sin(math.radians(arc.start_angle))
+        x2 = math.cos(math.radians(arc.end_angle))
+        y2 = math.sin(math.radians(arc.end_angle))
+        
+        # round to zero if is close enough
+        x1 = 0 if is_close(x1, 0) else x1
+        y1 = 0 if is_close(y1, 0) else y1
+        x2 = 0 if is_close(x2, 0) else x2
+        y2 = 0 if is_close(y2, 0) else y2
+        
+        v1 = [(x1 * arc.radius) + arc.loc[0], (y1 * arc.radius) + arc.loc[1]]
+        v2 = [(x2 * arc.radius) + arc.loc[0], (y2 * arc.radius) + arc.loc[1]]
+
+        mcArcs.append(Arc(arc, v1, v2))
+
+    # return
+    if len(mcArcs):
+        return mcArcs
+
+    return None
 
 # -----------------------------------------------------------------------------
 
@@ -197,9 +274,13 @@ def process(input, output):
         for polyline in polylines:
             mcBuffer+= mcPolygon(polyline)
 
-    # process ARC
+    # process ARCS
     arcs = drawing.entities.get_type('arc')
     arcs = process_arcs(arcs)
+    
+    if arcs:
+        for arc in arcs:
+            mcBuffer+= mcPolygon(arc)
 
     # surface size
     width  = (maxX if maxX else 100) + 10
@@ -210,7 +291,7 @@ def process(input, output):
     buffer+= 'mc.surface('+str(width)+','+str(height)+');\n\n'
 
     # millcrum contents
-    buffer+= mcBuffer
+    buffer+= mcBuffer + '\n'
 
     # millcrum footer
     buffer+= 'mc.get();\n'
